@@ -16,12 +16,20 @@
 
 package com.example.android.guesstheword.screens.game
 
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.text.format.DateUtils
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.getSystemService
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.NavHostFragment.findNavController
 import com.example.android.guesstheword.R
 import com.example.android.guesstheword.databinding.GameFragmentBinding
@@ -31,14 +39,8 @@ import com.example.android.guesstheword.databinding.GameFragmentBinding
  */
 class GameFragment : Fragment() {
 
-    // The current word
-    private var word = ""
-
-    // The current score
-    private var score = 0
-
-    // The list of words - the front of the list is the next word to guess
-    private lateinit var wordList: MutableList<String>
+    //Connecting ViewModel with UI fragment
+    private lateinit var viewModel: GameViewModel
 
     private lateinit var binding: GameFragmentBinding
 
@@ -53,89 +55,78 @@ class GameFragment : Fragment() {
                 false
         )
 
-        resetList()
-        nextWord()
+        viewModel = ViewModelProvider(this).get(GameViewModel::class.java)
 
-        binding.correctButton.setOnClickListener { onCorrect() }
-        binding.skipButton.setOnClickListener { onSkip() }
-        updateScoreText()
-        updateWordText()
+        binding.gameViewModel = viewModel
+        binding.setLifecycleOwner(this) //This allows to bind data with layout
+
+        /**
+         * Adding Observers for the word and score that work as LiveData
+         * Although most of these observers can be automatically added to the layout by data binding
+         * This way the UI is updated automatically each time those values change
+         */
+        /*viewModel.score.observe(this.viewLifecycleOwner, Observer { newScore ->
+            binding.scoreText.text = newScore.toString()
+        })*/
+
+        /*viewModel.word.observe(this.viewLifecycleOwner, Observer { newWord ->
+            binding.wordText.text = newWord
+        })*/
+
+        /*viewModel.currentTime.observe(this.viewLifecycleOwner, Observer { newTime ->
+            binding.timerText.text = DateUtils.formatElapsedTime(newTime)
+        })*/
+
+        viewModel.eventGameFinished.observe(this.viewLifecycleOwner, Observer { hasFinished ->
+            if(hasFinished) {
+                gameFinished()
+                viewModel.onGameFinishComplete()
+
+                buzz(viewModel.buzzTypes)
+                viewModel.stopBuzz()
+            }
+        })
+
+        viewModel.eventIsCorrect.observe(this.viewLifecycleOwner, Observer { isCorrect ->
+            if(isCorrect) {
+                buzz(viewModel.buzzTypes)
+                viewModel.stopBuzz()
+            }
+        })
+
+        viewModel.countDownPanic.observe(this.viewLifecycleOwner, Observer { panic ->
+            if(panic) {
+                buzz(viewModel.buzzTypes)
+            }
+        })
+
         return binding.root
 
     }
 
-    /**
-     * Resets the list of words and randomizes the order
-     */
-    private fun resetList() {
-        wordList = mutableListOf(
-                "queen",
-                "hospital",
-                "basketball",
-                "cat",
-                "change",
-                "snail",
-                "soup",
-                "calendar",
-                "sad",
-                "desk",
-                "guitar",
-                "home",
-                "railway",
-                "zebra",
-                "jelly",
-                "car",
-                "crow",
-                "trade",
-                "bag",
-                "roll",
-                "bubble"
-        )
-        wordList.shuffle()
-    }
 
     /**
      * Called when the game is finished
      */
     private fun gameFinished() {
-        val action = GameFragmentDirections.actionGameToScore(score)
+        val action = GameFragmentDirections.actionGameToScore(viewModel.score.value ?: 0)
+        // Having ?: means that in case the value is null, 0 is going to be used instead
+
         findNavController(this).navigate(action)
     }
 
-    /**
-     * Moves to the next word in the list
-     */
-    private fun nextWord() {
-        //Select and remove a word from the list
-        if (wordList.isEmpty()) {
-            gameFinished()
-        } else {
-            word = wordList.removeAt(0)
+    private fun buzz(pattern: LongArray) {
+        val buzzer = activity?.getSystemService<Vibrator>()
+
+        buzzer?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                buzzer.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                //deprecated in API 26
+                buzzer.vibrate(pattern, -1)
+            }
         }
-        updateWordText()
-        updateScoreText()
     }
 
-    /** Methods for buttons presses **/
 
-    private fun onSkip() {
-        score--
-        nextWord()
-    }
-
-    private fun onCorrect() {
-        score++
-        nextWord()
-    }
-
-    /** Methods for updating the UI **/
-
-    private fun updateWordText() {
-        binding.wordText.text = word
-
-    }
-
-    private fun updateScoreText() {
-        binding.scoreText.text = score.toString()
-    }
 }
